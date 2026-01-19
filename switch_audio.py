@@ -285,7 +285,14 @@ def main():
     for video_path in videos:
         try:
             video_duration = ffprobe_duration(video_path)
-            use_shortest = audio_duration > (video_duration + 0.01)
+            audio_longer = audio_duration > (video_duration + 0.01)
+            audio_shorter = audio_duration + 0.01 < video_duration
+            if audio_shorter:
+                print(
+                    "Warning: audio shorter than video, looping from start "
+                    f"(audio {format_duration(audio_duration)}, "
+                    f"video {format_duration(video_duration)})"
+                )
 
             output_path = build_output_path(video_path, args.suffix, args.in_place)
             if output_path.exists() and not args.overwrite:
@@ -299,6 +306,10 @@ def main():
                 "-stats",
                 "-i",
                 str(video_path),
+            ]
+            if audio_shorter:
+                cmd.extend(["-stream_loop", "-1"])
+            cmd.extend([
                 "-i",
                 str(audio_path),
                 "-map",
@@ -309,9 +320,8 @@ def main():
                 "copy",
                 "-c:a",
                 audio_codec,
-            ]
-            if use_shortest:
-                cmd.append("-shortest")
+            ])
+            cmd.append("-shortest")
             if args.overwrite or args.in_place:
                 cmd.insert(1, "-y")
             cmd.append(str(output_path))

@@ -36,6 +36,7 @@ Behavior:
 - If `audio/` has multiple MP3s, the newest is used.
 - If `audio/` has no MP3s, MP3s from `audio-input/` are combined and saved to `audio/YYYY.MM.DD-HH.MM.SS.mp3`.
 - If audio is longer than the video, it is trimmed to the video length.
+- If audio is shorter than the video, it loops from the start to fill the full video length.
 - Audio codec is chosen automatically based on container unless `--audio-codec` is set (`.webm` -> `opus`, `.mp4/.mov/.m4v/.mkv` -> `aac`, `.avi` -> `mp3`).
 - If multiple videos are present, failures are reported and processing continues for the rest.
 

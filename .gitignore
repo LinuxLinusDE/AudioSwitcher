@@ -29,3 +29,5 @@ pip-wheel-metadata/
 
 # VS Code
 .vscode/
+.code-workspace
+AudioSwitcher.code-workspace

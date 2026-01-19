@@ -36,6 +36,7 @@ Verhalten:
 - Wenn `audio/` mehrere MP3s hat, wird die neueste genutzt.
 - Wenn `audio/` keine MP3s hat, werden MP3s aus `audio-input/` kombiniert und unter `audio/JJJJ.MM.TT-SS.MM.SS.mp3` gespeichert.
 - Wenn Audio laenger als das Video ist, wird es am Ende abgeschnitten.
+- Wenn Audio kuerzer als das Video ist, wird es ab Anfang geloopt, bis das Video zu Ende ist.
 - Der Audio-Codec wird automatisch nach Container gewaehlt, ausser `--audio-codec` ist gesetzt (`.webm` -> `opus`, `.mp4/.mov/.m4v/.mkv` -> `aac`, `.avi` -> `mp3`).
 - Bei mehreren Videos werden Fehler ausgegeben und die Verarbeitung wird mit den restlichen Videos fortgesetzt.
 
