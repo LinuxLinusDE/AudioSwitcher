@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import random
 from datetime import datetime
 from pathlib import Path
 
@@ -75,10 +76,12 @@ def pick_mp3(audio_dir: Path, mode: str, name: str | None) -> Path | None:
     raise SystemExit(f"Unknown audio pick mode: {mode}")
 
 
-def combine_mp3s(audio_input_dir: Path, output_path: Path) -> None:
+def combine_mp3s(audio_input_dir: Path, output_path: Path, shuffle: bool) -> None:
     files = sorted(audio_input_dir.glob("*.mp3"))
     if not files:
         raise SystemExit(f"No MP3 files found in {audio_input_dir}")
+    if shuffle:
+        random.shuffle(files)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -86,7 +89,7 @@ def combine_mp3s(audio_input_dir: Path, output_path: Path) -> None:
         list_path = Path(tmpdir) / "concat.txt"
         with list_path.open("w", encoding="utf-8") as f:
             for p in files:
-                f.write(f"file '{p.as_posix()}'\n")
+                f.write(f"file '{p.resolve().as_posix()}'\n")
 
         cmd = [
             "ffmpeg",
@@ -166,6 +169,11 @@ def main():
         help="Directory with video files to process (default: video).",
     )
     parser.add_argument(
+        "--video-input",
+        type=Path,
+        help="Optional single video file to process (overrides --video-dir).",
+    )
+    parser.add_argument(
         "--audio-codec",
         default=None,
         help="Audio codec for output (default: auto by container).",
@@ -190,17 +198,48 @@ def main():
         action="store_true",
         help="List durations of MP3 files in the audio directory and exit.",
     )
+    parser.add_argument(
+        "--list-audio-sort",
+        choices=["name", "date"],
+        default="name",
+        help="Sort order for --list-audio-lengths (default: name).",
+    )
+    parser.add_argument(
+        "--shuffle-audio-input",
+        action="store_true",
+        help="Randomize order of MP3s from audio-input when combining.",
+    )
+    parser.add_argument(
+        "--combine-only",
+        action="store_true",
+        help="Only combine audio-input MP3s into audio/ and exit.",
+    )
 
     args = parser.parse_args()
 
     which_or_die("ffmpeg")
     which_or_die("ffprobe")
 
+    if args.combine_only:
+        if not list(args.audio_input_dir.glob("*.mp3")):
+            raise SystemExit(f"No MP3 files found in {args.audio_input_dir}")
+        ts = datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
+        combined = args.audio_dir / f"{ts}.mp3"
+        combine_mp3s(args.audio_input_dir, combined, args.shuffle_audio_input)
+        duration = ffprobe_duration(combined)
+        print(f"Combined audio: {combined}")
+        print(f"Length: {format_duration(duration)} ({duration:.2f}s)")
+        return
+
     if args.list_audio_lengths:
-        audio_files = sorted([p for p in args.audio_dir.glob("*.mp3") if p.is_file()])
+        audio_files = [p for p in args.audio_dir.glob("*.mp3") if p.is_file()]
         if not audio_files:
             print(f"No MP3 files found in {args.audio_dir}")
             return
+        if args.list_audio_sort == "date":
+            audio_files = sorted(audio_files, key=lambda p: p.stat().st_mtime, reverse=True)
+        else:
+            audio_files = sorted(audio_files, key=lambda p: p.name.lower())
         total = 0.0
         for p in audio_files:
             duration = ffprobe_duration(p)
@@ -214,21 +253,31 @@ def main():
     else:
         audio_path = pick_mp3(args.audio_dir, args.audio_pick, args.audio_name)
         if args.combine or audio_path is None:
+            if not list(args.audio_input_dir.glob("*.mp3")):
+                raise SystemExit(f"No MP3 files found in {args.audio_input_dir}")
             ts = datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
             combined = args.audio_dir / f"{ts}.mp3"
-            combine_mp3s(args.audio_input_dir, combined)
+            combine_mp3s(args.audio_input_dir, combined, args.shuffle_audio_input)
             audio_path = combined
 
     if not audio_path.exists():
         raise SystemExit(f"Audio file not found: {audio_path}")
 
-    video_dir = args.video_dir
-    if not video_dir.exists():
-        raise SystemExit(f"Video directory not found: {video_dir}")
+    if args.video_input:
+        video_path = args.video_input
+        if not video_path.exists():
+            raise SystemExit(f"Video file not found: {video_path}")
+        if video_path.suffix.lower() not in VIDEO_EXTS:
+            raise SystemExit(f"Unsupported video extension: {video_path.suffix}")
+        videos = [video_path]
+    else:
+        video_dir = args.video_dir
+        if not video_dir.exists():
+            raise SystemExit(f"Video directory not found: {video_dir}")
 
-    videos = [p for p in sorted(video_dir.iterdir()) if p.suffix.lower() in VIDEO_EXTS]
-    if not videos:
-        raise SystemExit(f"No video files found in {video_dir}")
+        videos = [p for p in sorted(video_dir.iterdir()) if p.suffix.lower() in VIDEO_EXTS]
+        if not videos:
+            raise SystemExit(f"No video files found in {video_dir}")
 
     audio_duration = ffprobe_duration(audio_path)
 

@@ -22,9 +22,13 @@ Replace the audio track of a single long video with MP3 audio using ffmpeg. Vide
 Common options:
 
 - `--list-audio-lengths` list durations of MP3 files in `audio/`
+- `--list-audio-sort name|date` sort order for `--list-audio-lengths`
+- `--combine-only` combine `audio-input/` into a single MP3 in `audio/` and exit
+- `--shuffle-audio-input` randomize MP3 order when combining from `audio-input/`
 - `--audio-file /path/to/file.mp3` use a specific MP3
 - `--audio-pick latest|oldest|name` choose which MP3 to use when multiple exist
 - `--audio-name myfile.mp3` used with `--audio-pick name` (extension optional)
+- `--video-input /path/to/video.mp4` use a single video file instead of the `video/` folder
 - `--in-place` replace the video file after successful export
 
 Behavior:
@@ -43,4 +47,7 @@ Behavior:
 
 # Show MP3 durations in audio/
 ./switch_audio.py --list-audio-lengths
+
+# Only combine MP3s in audio-input/ into audio/
+./switch_audio.py --combine-only
 ```

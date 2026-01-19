@@ -22,9 +22,13 @@ Ersetzt die Audiospur eines langen Videos mit MP3-Audio mittels ffmpeg. Das Vide
 Hauefige Optionen:
 
 - `--list-audio-lengths` Laengen der MP3-Dateien in `audio/` ausgeben
+- `--list-audio-sort name|date` Sortierung fuer `--list-audio-lengths`
+- `--combine-only` MP3s aus `audio-input/` zu einer MP3 in `audio/` kombinieren und beenden
+- `--shuffle-audio-input` zufaellige Reihenfolge der MP3s aus `audio-input/`
 - `--audio-file /pfad/zur/datei.mp3` eine konkrete MP3 verwenden
 - `--audio-pick latest|oldest|name` waehlt die MP3, wenn mehrere vorhanden sind
 - `--audio-name datei.mp3` zusammen mit `--audio-pick name` (Endung optional)
+- `--video-input /pfad/zum/video.mp4` eine einzelne Videodatei statt `video/` nutzen
 - `--in-place` Video nach erfolgreichem Export ersetzen
 
 Verhalten:
@@ -43,4 +47,7 @@ Verhalten:
 
 # MP3-Laengen in audio/ anzeigen
 ./switch_audio.py --list-audio-lengths
+
+# Nur MP3s in audio-input/ kombinieren
+./switch_audio.py --combine-only
 ```
