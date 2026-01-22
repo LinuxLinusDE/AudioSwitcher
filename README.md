@@ -22,6 +22,7 @@ Replace the audio track of a single long video with MP3 audio using ffmpeg. Vide
 Common options:
 
 - `--list-audio-lengths` list durations of MP3 files in `audio/`
+- `--list-audio-input-lengths` list durations of MP3 files in `audio-input/`
 - `--list-audio-sort name|date` sort order for `--list-audio-lengths`
 - `--combine-only` combine `audio-input/` into a single MP3 in `audio/` and exit
 - `--shuffle-audio-input` randomize MP3 order when combining from `audio-input/`

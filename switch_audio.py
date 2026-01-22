@@ -214,6 +214,11 @@ def main():
         help="List durations of MP3 files in the audio directory and exit.",
     )
     parser.add_argument(
+        "--list-audio-input-lengths",
+        action="store_true",
+        help="List durations of MP3 files in the audio-input directory and exit.",
+    )
+    parser.add_argument(
         "--list-audio-sort",
         choices=["name", "date"],
         default="name",
@@ -249,10 +254,11 @@ def main():
         print(f"Length: {format_duration(duration)} ({duration:.2f}s)")
         return
 
-    if args.list_audio_lengths:
-        audio_files = [p for p in args.audio_dir.glob("*.mp3") if p.is_file()]
+    if args.list_audio_lengths or args.list_audio_input_lengths:
+        target_dir = args.audio_input_dir if args.list_audio_input_lengths else args.audio_dir
+        audio_files = [p for p in target_dir.glob("*.mp3") if p.is_file()]
         if not audio_files:
-            print(f"No MP3 files found in {args.audio_dir}")
+            print(f"No MP3 files found in {target_dir}")
             return
         if args.list_audio_sort == "date":
             audio_files = sorted(audio_files, key=lambda p: p.stat().st_mtime, reverse=True)

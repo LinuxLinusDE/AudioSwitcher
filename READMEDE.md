@@ -22,6 +22,7 @@ Ersetzt die Audiospur eines langen Videos mit MP3-Audio mittels ffmpeg. Das Vide
 Hauefige Optionen:
 
 - `--list-audio-lengths` Laengen der MP3-Dateien in `audio/` ausgeben
+- `--list-audio-input-lengths` Laengen der MP3-Dateien in `audio-input/` ausgeben
 - `--list-audio-sort name|date` Sortierung fuer `--list-audio-lengths`
 - `--combine-only` MP3s aus `audio-input/` zu einer MP3 in `audio/` kombinieren und beenden
 - `--shuffle-audio-input` zufaellige Reihenfolge der MP3s aus `audio-input/`
