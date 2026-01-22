@@ -35,6 +35,7 @@ Behavior:
 
 - If `audio/` has multiple MP3s, the newest is used.
 - If `audio/` has no MP3s, MP3s from `audio-input/` are combined and saved to `audio/YYYY.MM.DD-HH.MM.SS.mp3`.
+- When combining, a tracklist text file is written next to the combined MP3 with start times per song (filename extensions are omitted; leading two-digit prefixes like `01 ` are stripped).
 - If audio is longer than the video, it is trimmed to the video length.
 - If audio is shorter than the video, it loops from the start to fill the full video length.
 - Audio codec is chosen automatically based on container unless `--audio-codec` is set (`.webm` -> `opus`, `.mp4/.mov/.m4v/.mkv` -> `aac`, `.avi` -> `mp3`).

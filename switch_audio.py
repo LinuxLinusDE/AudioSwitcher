@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import random
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -76,7 +77,7 @@ def pick_mp3(audio_dir: Path, mode: str, name: str | None) -> Path | None:
     raise SystemExit(f"Unknown audio pick mode: {mode}")
 
 
-def combine_mp3s(audio_input_dir: Path, output_path: Path, shuffle: bool) -> None:
+def combine_mp3s(audio_input_dir: Path, output_path: Path, shuffle: bool) -> list[Path]:
     files = sorted(audio_input_dir.glob("*.mp3"))
     if not files:
         raise SystemExit(f"No MP3 files found in {audio_input_dir}")
@@ -107,6 +108,20 @@ def combine_mp3s(audio_input_dir: Path, output_path: Path, shuffle: bool) -> Non
             str(output_path),
         ]
         run(cmd)
+    return files
+
+
+def write_tracklist(files: list[Path], output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    current = 0.0
+    with output_path.open("w", encoding="utf-8") as f:
+        for p in files:
+            display_name = p.stem
+            match = re.match(r"^\d{2}[\s._-]+(.+)$", p.stem)
+            if match:
+                display_name = match.group(1)
+            f.write(f"{format_duration(current)} - {display_name}\n")
+            current += ffprobe_duration(p)
 
 
 def build_output_path(video_path: Path, suffix: str, in_place: bool) -> Path:
@@ -225,9 +240,12 @@ def main():
             raise SystemExit(f"No MP3 files found in {args.audio_input_dir}")
         ts = datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
         combined = args.audio_dir / f"{ts}.mp3"
-        combine_mp3s(args.audio_input_dir, combined, args.shuffle_audio_input)
+        combined_files = combine_mp3s(args.audio_input_dir, combined, args.shuffle_audio_input)
+        tracklist_path = combined.with_suffix(".txt")
+        write_tracklist(combined_files, tracklist_path)
         duration = ffprobe_duration(combined)
         print(f"Combined audio: {combined}")
+        print(f"Tracklist: {tracklist_path}")
         print(f"Length: {format_duration(duration)} ({duration:.2f}s)")
         return
 
@@ -257,7 +275,9 @@ def main():
                 raise SystemExit(f"No MP3 files found in {args.audio_input_dir}")
             ts = datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
             combined = args.audio_dir / f"{ts}.mp3"
-            combine_mp3s(args.audio_input_dir, combined, args.shuffle_audio_input)
+            combined_files = combine_mp3s(args.audio_input_dir, combined, args.shuffle_audio_input)
+            tracklist_path = combined.with_suffix(".txt")
+            write_tracklist(combined_files, tracklist_path)
             audio_path = combined
 
     if not audio_path.exists():
