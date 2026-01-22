@@ -37,6 +37,9 @@ Behavior:
 - If `audio/` has multiple MP3s, the newest is used.
 - If `audio/` has no MP3s, MP3s from `audio-input/` are combined and saved to `audio/YYYY.MM.DD-HH.MM.SS.mp3`.
 - When combining, a tracklist text file is written next to the combined MP3 with start times per song (filename extensions are omitted; leading two-digit prefixes like `01 ` are stripped).
+- With `--shuffle-audio-input`, MP3s that start with two digits are kept first in numeric order, and the remaining files are shuffled randomly.
+  Naming examples for fixed order: `00 Intro.mp3`, `01 Theme.mp3`, `02 Outro.mp3` (two digits + space/underscore/dash).
+  Naming examples for shuffled items: `Song A.mp3`, `My Track.mp3` (no two-digit prefix).
 - If audio is longer than the video, it is trimmed to the video length.
 - If audio is shorter than the video, it loops from the start to fill the full video length.
 - Audio codec is chosen automatically based on container unless `--audio-codec` is set (`.webm` -> `opus`, `.mp4/.mov/.m4v/.mkv` -> `aac`, `.avi` -> `mp3`).
@@ -53,4 +56,7 @@ Behavior:
 
 # Only combine MP3s in audio-input/ into audio/
 ./switch_audio.py --combine-only
+
+# Combine with shuffle, but keep two-digit prefixes first (00, 01, ...)
+./switch_audio.py --combine --shuffle-audio-input
 ```

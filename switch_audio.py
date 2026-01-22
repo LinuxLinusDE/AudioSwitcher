@@ -82,7 +82,17 @@ def combine_mp3s(audio_input_dir: Path, output_path: Path, shuffle: bool) -> lis
     if not files:
         raise SystemExit(f"No MP3 files found in {audio_input_dir}")
     if shuffle:
-        random.shuffle(files)
+        prefixed = []
+        others = []
+        for p in files:
+            match = re.match(r"^(\d{2})[\s._-]+", p.stem)
+            if match:
+                prefixed.append((int(match.group(1)), p.name.lower(), p))
+            else:
+                others.append(p)
+        prefixed = [p for _, _, p in sorted(prefixed)]
+        random.shuffle(others)
+        files = prefixed + others
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
