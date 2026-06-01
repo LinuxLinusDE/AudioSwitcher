@@ -13,6 +13,11 @@ from datetime import datetime
 from pathlib import Path
 
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".m4v", ".webm"}
+INTERRUPT_RETURN_CODES = {130, 255, -2}
+
+
+class UserAbort(BaseException):
+    pass
 
 
 def which_or_die(tool):
@@ -21,7 +26,16 @@ def which_or_die(tool):
 
 
 def run(cmd, *, check=True):
-    result = subprocess.run(cmd, check=check)
+    try:
+        result = subprocess.run(cmd, check=check)
+    except KeyboardInterrupt as exc:
+        raise UserAbort from exc
+    except subprocess.CalledProcessError as exc:
+        if exc.returncode in INTERRUPT_RETURN_CODES:
+            raise UserAbort from exc
+        raise
+    if result.returncode in INTERRUPT_RETURN_CODES:
+        raise UserAbort
     return result.returncode
 
 
@@ -36,7 +50,14 @@ def ffprobe_duration(path: Path) -> float:
         "default=nw=1:nk=1",
         str(path),
     ]
-    out = subprocess.check_output(cmd, text=True).strip()
+    try:
+        out = subprocess.check_output(cmd, text=True).strip()
+    except KeyboardInterrupt as exc:
+        raise UserAbort from exc
+    except subprocess.CalledProcessError as exc:
+        if exc.returncode in INTERRUPT_RETURN_CODES:
+            raise UserAbort from exc
+        raise
     try:
         return float(out)
     except ValueError:
@@ -49,6 +70,33 @@ def format_duration(seconds: float) -> str:
     minutes = (total % 3600) // 60
     secs = total % 60
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+
+def print_abort_summary(
+    completed_outputs: list[Path],
+    total_videos: int,
+    current_video: Path | None = None,
+    current_output: Path | None = None,
+) -> None:
+    print()
+    print("Abgebrochen durch Benutzer.")
+    print(f"Status: {len(completed_outputs)}/{total_videos} Video(s) abgeschlossen.")
+    if completed_outputs:
+        print(f"Letztes fertiges Video: {completed_outputs[-1]}")
+    if current_video is not None:
+        print(f"Aktuelles Video: {current_video}")
+    if current_output is not None:
+        print(f"Aktueller Output ist eventuell unvollstaendig: {current_output}")
+
+
+def delete_generated_audio(path: Path) -> None:
+    try:
+        path.unlink()
+        print(f"Deleted temporary audio: {path}")
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        print(f"Warning: temporary audio could not be deleted: {path} ({exc})")
 
 
 def sum_durations(files: list[Path]) -> float:
@@ -659,7 +707,12 @@ def main():
         raise SystemExit(f"Audio file not found: {audio_path}")
 
     failures = []
-    for video_path in videos:
+    completed_outputs = []
+    total_videos = len(videos)
+    print(f"Start processing: {total_videos} video(s)")
+    for index, video_path in enumerate(videos, start=1):
+        output_path = None
+        generated_audio_path = None
         try:
             video_duration = video_durations[video_path]
             output_path = build_output_path(
@@ -668,16 +721,26 @@ def main():
                 args.in_place,
                 args.output_dir,
             )
+            print()
+            print(f"Processing {index}/{total_videos}: {video_path}")
+            print(f"Video length: {format_duration(video_duration)}")
+            if args.in_place:
+                print(f"Temporary output: {output_path}")
+                print(f"Final output: {video_path}")
+            else:
+                print(f"Output: {output_path}")
             if output_path.exists() and not args.overwrite:
                 raise RuntimeError(f"Output exists: {output_path} (use --overwrite)")
 
             current_audio_path = audio_path
             if args.force_shuffle_audio_input:
+                print("Creating shuffled audio for this video...")
+                generated_audio_path = args.audio_dir / f"{video_path.stem}.mp3"
                 current_audio_path = create_combined_audio(
                     args.audio_input_dir,
                     args.audio_dir,
                     True,
-                    output_path=args.audio_dir / f"{video_path.stem}.mp3",
+                    output_path=generated_audio_path,
                     tracklist_path=build_tracklist_path(
                         video_path,
                         output_path,
@@ -688,6 +751,8 @@ def main():
                 )
 
             audio_duration = ffprobe_duration(current_audio_path)
+            print(f"Audio: {current_audio_path}")
+            print(f"Audio length: {format_duration(audio_duration)}")
             audio_longer = audio_duration > (video_duration + 0.01)
             audio_shorter = audio_duration + 0.01 < video_duration
             if audio_shorter:
@@ -725,17 +790,44 @@ def main():
                 cmd.insert(1, "-y")
             cmd.append(str(output_path))
 
+            print("Running ffmpeg...")
             run(cmd)
 
             if args.in_place:
+                print("Replacing original video...")
                 os.replace(output_path, video_path)
+                completed_outputs.append(video_path)
+                print(f"Done: {video_path}")
+            else:
+                completed_outputs.append(output_path)
+                print(f"Done: {output_path}")
+        except UserAbort:
+            print_abort_summary(
+                completed_outputs,
+                total_videos,
+                current_video=video_path,
+                current_output=output_path,
+            )
+            raise
         except Exception as exc:
             failures.append((video_path, str(exc)))
             print(f"Failed: {video_path} ({exc})")
+        finally:
+            if generated_audio_path is not None:
+                delete_generated_audio(generated_audio_path)
 
     if failures:
         raise SystemExit(f"{len(failures)} video(s) failed")
+    print()
+    print(f"Finished: {len(completed_outputs)}/{total_videos} video(s) completed.")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except UserAbort:
+        raise SystemExit(130)
+    except KeyboardInterrupt:
+        print()
+        print("Abgebrochen durch Benutzer.")
+        raise SystemExit(130)
