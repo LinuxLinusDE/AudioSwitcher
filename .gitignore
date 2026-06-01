@@ -2,6 +2,8 @@
 *.txt
 *.mp3
 !.gitkeep
+lst.txt
+
 
 # Python
 __pycache__/

@@ -26,6 +26,7 @@ Hauefige Optionen:
 - `--list-audio-sort name|date` Sortierung fuer `--list-audio-lengths`
 - `--combine-only` MP3s aus `audio-input/` zu einer MP3 in `audio/` kombinieren und beenden
 - `--shuffle-audio-input` zufaellige Reihenfolge der MP3s aus `audio-input/`
+- `--force-shuffle-audio-input` immer eine neue zufaellig gemischte MP3 aus `audio-input/` erzeugen, auch wenn in `audio/` schon eine vorhanden ist
 - `--audio-file /pfad/zur/datei.mp3` eine konkrete MP3 verwenden
 - `--audio-pick latest|oldest|name` waehlt die MP3, wenn mehrere vorhanden sind
 - `--audio-name datei.mp3` zusammen mit `--audio-pick name` (Endung optional)
@@ -36,6 +37,7 @@ Verhalten:
 
 - Wenn `audio/` mehrere MP3s hat, wird die neueste genutzt.
 - Wenn `audio/` keine MP3s hat, werden MP3s aus `audio-input/` kombiniert und unter `audio/JJJJ.MM.TT-SS.MM.SS.mp3` gespeichert.
+- Mit `--force-shuffle-audio-input` werden MP3s aus `audio-input/` immer zu einer neuen zufaellig gemischten Datei in `audio/` kombiniert, auch wenn schon eine kombinierte MP3 vorhanden ist.
 - Beim Kombinieren wird eine Tracklist-Textdatei neben der MP3 erzeugt mit Startzeiten pro Song (Dateiendungen werden weggelassen; zweistellige Praefixe wie `01 ` werden entfernt).
 - Mit `--shuffle-audio-input` bleiben MP3s mit zweistelligen Praefixen zuerst in numerischer Reihenfolge, die restlichen Dateien werden zufaellig gemischt.
   Beispiel fuer feste Reihenfolge: `00 Intro.mp3`, `01 Theme.mp3`, `02 Outro.mp3` (zwei Ziffern + Leerzeichen/Unterstrich/Bindestrich).
@@ -59,4 +61,7 @@ Verhalten:
 
 # Kombinieren mit Shuffle, aber zweistellige Praefixe zuerst (00, 01, ...)
 ./switch_audio.py --combine --shuffle-audio-input
+
+# Neue zufaellig gemischte kombinierte Audiodatei erzwingen, auch wenn audio/ schon eine hat
+./switch_audio.py --force-shuffle-audio-input
 ```

@@ -134,6 +134,17 @@ def write_tracklist(files: list[Path], output_path: Path) -> None:
             current += ffprobe_duration(p)
 
 
+def create_combined_audio(audio_input_dir: Path, audio_dir: Path, shuffle: bool) -> Path:
+    if not list(audio_input_dir.glob("*.mp3")):
+        raise SystemExit(f"No MP3 files found in {audio_input_dir}")
+    ts = datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
+    combined = audio_dir / f"{ts}.mp3"
+    combined_files = combine_mp3s(audio_input_dir, combined, shuffle)
+    tracklist_path = combined.with_suffix(".txt")
+    write_tracklist(combined_files, tracklist_path)
+    return combined
+
+
 def build_output_path(video_path: Path, suffix: str, in_place: bool) -> Path:
     if in_place:
         return video_path.with_name(video_path.stem + "_tmp" + video_path.suffix)
@@ -240,6 +251,14 @@ def main():
         help="Randomize order of MP3s from audio-input when combining.",
     )
     parser.add_argument(
+        "--force-shuffle-audio-input",
+        action="store_true",
+        help=(
+            "Always create a new shuffled MP3 from audio-input, even if audio/ "
+            "already contains an MP3."
+        ),
+    )
+    parser.add_argument(
         "--combine-only",
         action="store_true",
         help="Only combine audio-input MP3s into audio/ and exit.",
@@ -251,13 +270,12 @@ def main():
     which_or_die("ffprobe")
 
     if args.combine_only:
-        if not list(args.audio_input_dir.glob("*.mp3")):
-            raise SystemExit(f"No MP3 files found in {args.audio_input_dir}")
-        ts = datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
-        combined = args.audio_dir / f"{ts}.mp3"
-        combined_files = combine_mp3s(args.audio_input_dir, combined, args.shuffle_audio_input)
+        combined = create_combined_audio(
+            args.audio_input_dir,
+            args.audio_dir,
+            args.shuffle_audio_input or args.force_shuffle_audio_input,
+        )
         tracklist_path = combined.with_suffix(".txt")
-        write_tracklist(combined_files, tracklist_path)
         duration = ffprobe_duration(combined)
         print(f"Combined audio: {combined}")
         print(f"Tracklist: {tracklist_path}")
@@ -286,15 +304,14 @@ def main():
         audio_path = args.audio_file
     else:
         audio_path = pick_mp3(args.audio_dir, args.audio_pick, args.audio_name)
-        if args.combine or audio_path is None:
-            if not list(args.audio_input_dir.glob("*.mp3")):
-                raise SystemExit(f"No MP3 files found in {args.audio_input_dir}")
-            ts = datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
-            combined = args.audio_dir / f"{ts}.mp3"
-            combined_files = combine_mp3s(args.audio_input_dir, combined, args.shuffle_audio_input)
-            tracklist_path = combined.with_suffix(".txt")
-            write_tracklist(combined_files, tracklist_path)
-            audio_path = combined
+        if args.force_shuffle_audio_input:
+            audio_path = create_combined_audio(args.audio_input_dir, args.audio_dir, True)
+        elif args.combine or audio_path is None:
+            audio_path = create_combined_audio(
+                args.audio_input_dir,
+                args.audio_dir,
+                args.shuffle_audio_input,
+            )
 
     if not audio_path.exists():
         raise SystemExit(f"Audio file not found: {audio_path}")
