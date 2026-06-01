@@ -19,6 +19,11 @@ Replace the audio track of a single long video with MP3 audio using ffmpeg. Vide
 ./switch_audio.py
 ```
 
+When started without options, an interactive assistant asks for the video input,
+audio mode, audio input folder, output folder, in-place mode, and overwrite
+behavior. It then shows a preflight summary with video and MP3 total durations
+and asks for confirmation before starting.
+
 Common options:
 
 - `--list-audio-lengths` list durations of MP3 files in `audio/`
@@ -31,6 +36,7 @@ Common options:
 - `--audio-pick latest|oldest|name` choose which MP3 to use when multiple exist
 - `--audio-name myfile.mp3` used with `--audio-pick name` (extension optional)
 - `--video-input /path/to/video.mp4` use video file(s), a directory, or a glob like `"/path/to/*.mp4"` instead of the `video/` folder
+- `--output-dir /path/to/output` write processed videos into this folder using the original filenames
 - `--in-place` replace the video file after successful export
 
 Behavior:
@@ -38,13 +44,17 @@ Behavior:
 - If `audio/` has multiple MP3s, the newest is used.
 - If `audio/` has no MP3s, MP3s from `audio-input/` are combined and saved to `audio/YYYY.MM.DD-HH.MM.SS.mp3`.
 - With `--force-shuffle-audio-input`, MP3s from `audio-input/` are always combined into a new shuffled file in `audio/`, even when an existing combined MP3 is present.
-- When `--force-shuffle-audio-input` is used with one or more `--video-input` videos, a separate shuffled audio file is created per video. The input MP3s are selected until their total duration reaches or exceeds the video duration when possible, and the tracklist is named after the video, for example `video/My Clip.mp4` writes `audio/My Clip.txt`.
+- When `--force-shuffle-audio-input` is used with one or more videos, a separate shuffled audio file is created per video. The input MP3s are selected until their total duration reaches or exceeds the video duration when possible.
+- If the selected MP3s from `audio-input/` are shorter than the target video, a warning is shown and the audio is looped during video processing.
+- Tracklists for per-video force shuffle are written next to the video output with the same base name, for example `output/My Clip.mp4` writes `output/My Clip.txt`.
+- Tracklists include header lines with video name, video length, and audio length when video context is available.
 - When combining, a tracklist text file is written next to the combined MP3 with start times per song (filename extensions are omitted; leading two-digit prefixes like `01 ` are stripped).
 - With `--shuffle-audio-input`, MP3s that start with two digits are kept first in numeric order, and the remaining files are shuffled randomly.
   Naming examples for fixed order: `00 Intro.mp3`, `01 Theme.mp3`, `02 Outro.mp3` (two digits + space/underscore/dash).
   Naming examples for shuffled items: `Song A.mp3`, `My Track.mp3` (no two-digit prefix).
 - If audio is longer than the video, it is trimmed to the video length.
 - If audio is shorter than the video, it loops from the start to fill the full video length.
+- With `--output-dir`, processed videos are written into that folder with their original filenames. Without `--output-dir`, the configured suffix is appended next to the source video.
 - Audio codec is chosen automatically based on container unless `--audio-codec` is set (`.webm` -> `opus`, `.mp4/.mov/.m4v/.mkv` -> `aac`, `.avi` -> `mp3`).
 - If multiple videos are present, failures are reported and processing continues for the rest.
 
@@ -68,4 +78,7 @@ Behavior:
 
 # Process all matching videos and create a fresh shuffled audio/tracklist per video
 ./switch_audio.py --video-input "/path/to/*.mp4" --force-shuffle-audio-input
+
+# Write processed videos to a separate output folder
+./switch_audio.py --video-input "/path/to/*.mp4" --output-dir "/path/to/output"
 ```

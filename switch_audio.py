@@ -8,6 +8,7 @@ import sys
 import tempfile
 import random
 import re
+import shlex
 from datetime import datetime
 from pathlib import Path
 
@@ -50,6 +51,14 @@ def format_duration(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
+def sum_durations(files: list[Path]) -> float:
+    return sum(ffprobe_duration(p) for p in files)
+
+
+def list_mp3_files(audio_input_dir: Path) -> list[Path]:
+    return [p for p in sorted(audio_input_dir.glob("*.mp3")) if p.is_file()]
+
+
 def pick_mp3(audio_dir: Path, mode: str, name: str | None) -> Path | None:
     files = [p for p in audio_dir.glob("*.mp3") if p.is_file()]
     if not files:
@@ -79,7 +88,7 @@ def pick_mp3(audio_dir: Path, mode: str, name: str | None) -> Path | None:
 
 
 def order_audio_input_files(audio_input_dir: Path, shuffle: bool) -> list[Path]:
-    files = sorted(audio_input_dir.glob("*.mp3"))
+    files = list_mp3_files(audio_input_dir)
     if not files:
         raise SystemExit(f"No MP3 files found in {audio_input_dir}")
     if shuffle:
@@ -108,6 +117,12 @@ def select_audio_files_for_duration(files: list[Path], target_duration: float | 
         total += ffprobe_duration(p)
         if total >= target_duration:
             break
+    if total < target_duration:
+        print(
+            "Warning: audio-input shorter than video target, output audio will loop "
+            f"(audio-input {format_duration(total)}, "
+            f"video {format_duration(target_duration)})"
+        )
     return selected
 
 
@@ -150,10 +165,23 @@ def combine_mp3s(
     return files
 
 
-def write_tracklist(files: list[Path], output_path: Path) -> None:
+def write_tracklist(
+    files: list[Path],
+    output_path: Path,
+    *,
+    video_path: Path | None = None,
+    video_duration: float | None = None,
+) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     current = 0.0
+    audio_duration = sum_durations(files)
     with output_path.open("w", encoding="utf-8") as f:
+        if video_path is not None:
+            f.write(f"Video: {video_path.name}\n")
+        if video_duration is not None:
+            f.write(f"Video length: {format_duration(video_duration)}\n")
+        f.write(f"Audio length: {format_duration(audio_duration)}\n")
+        f.write("\n")
         for p in files:
             display_name = p.stem
             match = re.match(r"^\d{2}[\s._-]+(.+)$", p.stem)
@@ -171,8 +199,9 @@ def create_combined_audio(
     output_path: Path | None = None,
     tracklist_path: Path | None = None,
     target_duration: float | None = None,
+    video_path: Path | None = None,
 ) -> Path:
-    if not list(audio_input_dir.glob("*.mp3")):
+    if not list_mp3_files(audio_input_dir):
         raise SystemExit(f"No MP3 files found in {audio_input_dir}")
     if output_path is None:
         ts = datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
@@ -180,7 +209,12 @@ def create_combined_audio(
     if tracklist_path is None:
         tracklist_path = output_path.with_suffix(".txt")
     combined_files = combine_mp3s(audio_input_dir, output_path, shuffle, target_duration)
-    write_tracklist(combined_files, tracklist_path)
+    write_tracklist(
+        combined_files,
+        tracklist_path,
+        video_path=video_path,
+        video_duration=target_duration,
+    )
     return output_path
 
 
@@ -219,10 +253,76 @@ def resolve_video_inputs(video_inputs: list[Path]) -> list[Path]:
     return videos
 
 
-def build_output_path(video_path: Path, suffix: str, in_place: bool) -> Path:
+def build_output_path(
+    video_path: Path,
+    suffix: str,
+    in_place: bool,
+    output_dir: Path | None = None,
+) -> Path:
     if in_place:
         return video_path.with_name(video_path.stem + "_tmp" + video_path.suffix)
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return output_dir / video_path.name
     return video_path.with_name(video_path.stem + suffix + video_path.suffix)
+
+
+def build_tracklist_path(video_path: Path, output_path: Path, in_place: bool) -> Path:
+    if in_place:
+        return video_path.with_suffix(".txt")
+    return output_path.with_suffix(".txt")
+
+
+def collect_video_durations(videos: list[Path]) -> dict[Path, float]:
+    return {video_path: ffprobe_duration(video_path) for video_path in videos}
+
+
+def print_preflight_summary(
+    args: argparse.Namespace,
+    videos: list[Path],
+    video_durations: dict[Path, float],
+) -> None:
+    print("Preflight")
+    print("---------")
+    print(f"Videos: {len(videos)}")
+    for video_path in videos:
+        print(f"  {video_path}: {format_duration(video_durations[video_path])}")
+    total_video_duration = sum(video_durations.values())
+    print(f"Video total: {format_duration(total_video_duration)}")
+
+    audio_input_files = list_mp3_files(args.audio_input_dir)
+    if audio_input_files:
+        audio_input_duration = sum_durations(audio_input_files)
+        print(
+            f"MP3 input: {len(audio_input_files)} file(s), "
+            f"total {format_duration(audio_input_duration)}"
+        )
+        longest_video = max(video_durations.values()) if video_durations else 0.0
+        if audio_input_duration < longest_video:
+            print(
+                "Warning: MP3 input is shorter than the longest video "
+                f"({format_duration(audio_input_duration)} < "
+                f"{format_duration(longest_video)}). Audio may loop."
+            )
+    else:
+        print(f"MP3 input: no MP3 files found in {args.audio_input_dir}")
+
+    if args.force_shuffle_audio_input:
+        mode = "pro Video neu mischen"
+    elif args.combine:
+        mode = "audio-input einmal kombinieren"
+    else:
+        mode = "vorhandenes Audio verwenden"
+    print(f"Mode: {mode}")
+
+    if args.in_place:
+        print("Output: in-place")
+    elif args.output_dir:
+        print(f"Output: {args.output_dir}")
+    else:
+        print(f"Output: next to source video with suffix {args.suffix}")
+    print(f"Overwrite: {'yes' if args.overwrite else 'no'}")
+    print()
 
 
 def choose_audio_codec_for_path(path: Path) -> str:
@@ -234,6 +334,142 @@ def choose_audio_codec_for_path(path: Path) -> str:
     if ext == ".avi":
         return "mp3"
     return "aac"
+
+
+def read_input(prompt: str) -> str:
+    try:
+        return input(prompt).strip()
+    except EOFError:
+        return ""
+
+
+def prompt_bool(question: str, default: bool = False) -> bool:
+    suffix = " [Y/n]: " if default else " [y/N]: "
+    while True:
+        answer = read_input(question + suffix).lower()
+        if not answer:
+            return default
+        if answer in {"y", "yes", "j", "ja"}:
+            return True
+        if answer in {"n", "no", "nein"}:
+            return False
+        print("Bitte mit ja oder nein antworten.")
+
+
+def parse_single_path(answer: str, *, label: str) -> Path | None:
+    if not answer:
+        return None
+    try:
+        parts = shlex.split(answer)
+    except ValueError as exc:
+        print(f"{label} konnte nicht gelesen werden: {exc}")
+        return None
+    if len(parts) != 1:
+        print(f"Bitte genau einen {label} angeben.")
+        return None
+    return Path(parts[0]).expanduser()
+
+
+def prompt_optional_path(question: str, *, must_exist_dir: bool = False) -> Path | None:
+    while True:
+        answer = read_input(question)
+        if not answer:
+            return None
+        path = parse_single_path(answer, label="Pfad")
+        if path is None:
+            continue
+        if must_exist_dir and not path.is_dir():
+            print(f"Ordner nicht gefunden: {path}")
+            continue
+        return path
+
+
+def parse_path_list(answer: str) -> list[Path] | None:
+    if not answer:
+        return None
+    try:
+        parts = shlex.split(answer)
+    except ValueError as exc:
+        print(f"Input konnte nicht gelesen werden: {exc}")
+        return None
+    if not parts:
+        return None
+    return [Path(part).expanduser() for part in parts]
+
+
+def prompt_video_inputs() -> list[Path] | None:
+    print("Video-Input Beispiele:")
+    print("  video/")
+    print("  /pfad/zum/video.mp4")
+    print('  "/pfad/zu/*.mp4"')
+    print('  "/pfad/Video 1.mp4" "/pfad/Video 2.mp4"')
+    while True:
+        video_inputs = parse_path_list(
+            read_input("Input-Datei, Ordner oder Dateien (leer = video/): ")
+        )
+        if video_inputs is None:
+            return None
+        try:
+            resolve_video_inputs(video_inputs)
+        except SystemExit as exc:
+            print(exc)
+            continue
+        return video_inputs
+
+
+def prompt_mode() -> str:
+    print()
+    print("Audio-Modus:")
+    print("  1) vorhandenes Audio aus audio/ verwenden")
+    print("  2) audio-input/ einmal kombinieren und optional mischen")
+    print("  3) pro Video neu aus audio-input/ mischen")
+    while True:
+        answer = read_input("Modus waehlen [1-3, leer = 1]: ")
+        if not answer:
+            return "existing"
+        if answer == "1":
+            return "existing"
+        if answer == "2":
+            return "combine"
+        if answer == "3":
+            return "force"
+        print("Bitte 1, 2 oder 3 eingeben.")
+
+
+def run_cli_assistant(args: argparse.Namespace) -> argparse.Namespace:
+    args.interactive_assistant = True
+    print("AudioSwitcher Assistent")
+    print("----------------------")
+    args.video_input = prompt_video_inputs()
+
+    mode = prompt_mode()
+    audio_input_dir = prompt_optional_path(
+        "Audio-Input-Ordner mit MP3s (leer = audio-input/): ",
+        must_exist_dir=True,
+    )
+    if audio_input_dir is not None:
+        args.audio_input_dir = audio_input_dir
+
+    if mode == "combine":
+        args.combine = True
+        args.shuffle_audio_input = prompt_bool("Beim Kombinieren mischen?", default=True)
+    elif mode == "force":
+        args.force_shuffle_audio_input = True
+
+    output_dir = prompt_optional_path(
+        "Output-Ordner (leer = neben dem Video mit Suffix schreiben): "
+    )
+
+    args.in_place = prompt_bool("In-place verwenden und Originalvideo ersetzen?", default=False)
+    if args.in_place:
+        args.output_dir = None
+    else:
+        args.output_dir = output_dir
+
+    args.overwrite = prompt_bool("Vorhandene Output-Dateien ueberschreiben?", default=False)
+
+    print()
+    return args
 
 
 def main():
@@ -298,6 +534,14 @@ def main():
         help="Suffix for output files when not using --in-place (default: _newaudio).",
     )
     parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help=(
+            "Directory for processed videos. When set, output files keep the "
+            "original video filename unless --in-place is used."
+        ),
+    )
+    parser.add_argument(
         "--in-place",
         action="store_true",
         help="Overwrite video files in place (uses a temporary file then replaces).",
@@ -343,6 +587,8 @@ def main():
     )
 
     args = parser.parse_args()
+    if len(sys.argv) == 1:
+        args = run_cli_assistant(args)
 
     which_or_die("ffmpeg")
     which_or_die("ffprobe")
@@ -389,6 +635,13 @@ def main():
         if not videos:
             raise SystemExit(f"No video files found in {video_dir}")
 
+    video_durations = collect_video_durations(videos)
+    print_preflight_summary(args, videos, video_durations)
+    if getattr(args, "interactive_assistant", False):
+        if not prompt_bool("Verarbeitung starten?", default=True):
+            print("Abgebrochen.")
+            return
+
     if args.audio_file:
         audio_path = args.audio_file
     elif args.force_shuffle_audio_input:
@@ -408,7 +661,16 @@ def main():
     failures = []
     for video_path in videos:
         try:
-            video_duration = ffprobe_duration(video_path)
+            video_duration = video_durations[video_path]
+            output_path = build_output_path(
+                video_path,
+                args.suffix,
+                args.in_place,
+                args.output_dir,
+            )
+            if output_path.exists() and not args.overwrite:
+                raise RuntimeError(f"Output exists: {output_path} (use --overwrite)")
+
             current_audio_path = audio_path
             if args.force_shuffle_audio_input:
                 current_audio_path = create_combined_audio(
@@ -416,8 +678,13 @@ def main():
                     args.audio_dir,
                     True,
                     output_path=args.audio_dir / f"{video_path.stem}.mp3",
-                    tracklist_path=args.audio_dir / f"{video_path.stem}.txt",
+                    tracklist_path=build_tracklist_path(
+                        video_path,
+                        output_path,
+                        args.in_place,
+                    ),
                     target_duration=video_duration,
+                    video_path=video_path,
                 )
 
             audio_duration = ffprobe_duration(current_audio_path)
@@ -429,10 +696,6 @@ def main():
                     f"(audio {format_duration(audio_duration)}, "
                     f"video {format_duration(video_duration)})"
                 )
-
-            output_path = build_output_path(video_path, args.suffix, args.in_place)
-            if output_path.exists() and not args.overwrite:
-                raise RuntimeError(f"Output exists: {output_path} (use --overwrite)")
 
             audio_codec = args.audio_codec or choose_audio_codec_for_path(output_path)
 
