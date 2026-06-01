@@ -30,7 +30,7 @@ Hauefige Optionen:
 - `--audio-file /pfad/zur/datei.mp3` eine konkrete MP3 verwenden
 - `--audio-pick latest|oldest|name` waehlt die MP3, wenn mehrere vorhanden sind
 - `--audio-name datei.mp3` zusammen mit `--audio-pick name` (Endung optional)
-- `--video-input /pfad/zum/video.mp4` eine einzelne Videodatei statt `video/` nutzen
+- `--video-input /pfad/zum/video.mp4` Videodatei(en), einen Ordner oder ein Glob wie `"/pfad/zu/*.mp4"` statt `video/` nutzen
 - `--in-place` Video nach erfolgreichem Export ersetzen
 
 Verhalten:
@@ -38,6 +38,7 @@ Verhalten:
 - Wenn `audio/` mehrere MP3s hat, wird die neueste genutzt.
 - Wenn `audio/` keine MP3s hat, werden MP3s aus `audio-input/` kombiniert und unter `audio/JJJJ.MM.TT-SS.MM.SS.mp3` gespeichert.
 - Mit `--force-shuffle-audio-input` werden MP3s aus `audio-input/` immer zu einer neuen zufaellig gemischten Datei in `audio/` kombiniert, auch wenn schon eine kombinierte MP3 vorhanden ist.
+- Wenn `--force-shuffle-audio-input` mit einem oder mehreren `--video-input`-Videos genutzt wird, wird pro Video eine eigene zufaellig gemischte Audiodatei erzeugt. Die Eingabe-MP3s werden nach Moeglichkeit so lange ausgewaehlt, bis ihre Gesamtlaenge die Videolaenge erreicht oder ueberschreitet. Die Tracklist wird nach dem Video benannt, zum Beispiel erzeugt `video/Mein Clip.mp4` die Datei `audio/Mein Clip.txt`.
 - Beim Kombinieren wird eine Tracklist-Textdatei neben der MP3 erzeugt mit Startzeiten pro Song (Dateiendungen werden weggelassen; zweistellige Praefixe wie `01 ` werden entfernt).
 - Mit `--shuffle-audio-input` bleiben MP3s mit zweistelligen Praefixen zuerst in numerischer Reihenfolge, die restlichen Dateien werden zufaellig gemischt.
   Beispiel fuer feste Reihenfolge: `00 Intro.mp3`, `01 Theme.mp3`, `02 Outro.mp3` (zwei Ziffern + Leerzeichen/Unterstrich/Bindestrich).
@@ -64,4 +65,7 @@ Verhalten:
 
 # Neue zufaellig gemischte kombinierte Audiodatei erzwingen, auch wenn audio/ schon eine hat
 ./switch_audio.py --force-shuffle-audio-input
+
+# Alle passenden Videos bearbeiten und pro Video frische Audio-/Tracklist-Dateien erzeugen
+./switch_audio.py --video-input "/pfad/zu/*.mp4" --force-shuffle-audio-input
 ```

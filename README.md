@@ -30,7 +30,7 @@ Common options:
 - `--audio-file /path/to/file.mp3` use a specific MP3
 - `--audio-pick latest|oldest|name` choose which MP3 to use when multiple exist
 - `--audio-name myfile.mp3` used with `--audio-pick name` (extension optional)
-- `--video-input /path/to/video.mp4` use a single video file instead of the `video/` folder
+- `--video-input /path/to/video.mp4` use video file(s), a directory, or a glob like `"/path/to/*.mp4"` instead of the `video/` folder
 - `--in-place` replace the video file after successful export
 
 Behavior:
@@ -38,6 +38,7 @@ Behavior:
 - If `audio/` has multiple MP3s, the newest is used.
 - If `audio/` has no MP3s, MP3s from `audio-input/` are combined and saved to `audio/YYYY.MM.DD-HH.MM.SS.mp3`.
 - With `--force-shuffle-audio-input`, MP3s from `audio-input/` are always combined into a new shuffled file in `audio/`, even when an existing combined MP3 is present.
+- When `--force-shuffle-audio-input` is used with one or more `--video-input` videos, a separate shuffled audio file is created per video. The input MP3s are selected until their total duration reaches or exceeds the video duration when possible, and the tracklist is named after the video, for example `video/My Clip.mp4` writes `audio/My Clip.txt`.
 - When combining, a tracklist text file is written next to the combined MP3 with start times per song (filename extensions are omitted; leading two-digit prefixes like `01 ` are stripped).
 - With `--shuffle-audio-input`, MP3s that start with two digits are kept first in numeric order, and the remaining files are shuffled randomly.
   Naming examples for fixed order: `00 Intro.mp3`, `01 Theme.mp3`, `02 Outro.mp3` (two digits + space/underscore/dash).
@@ -64,4 +65,7 @@ Behavior:
 
 # Force a fresh shuffled combined audio file, even when audio/ already has one
 ./switch_audio.py --force-shuffle-audio-input
+
+# Process all matching videos and create a fresh shuffled audio/tracklist per video
+./switch_audio.py --video-input "/path/to/*.mp4" --force-shuffle-audio-input
 ```

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import glob
 import os
 import shutil
 import subprocess
@@ -77,7 +78,7 @@ def pick_mp3(audio_dir: Path, mode: str, name: str | None) -> Path | None:
     raise SystemExit(f"Unknown audio pick mode: {mode}")
 
 
-def combine_mp3s(audio_input_dir: Path, output_path: Path, shuffle: bool) -> list[Path]:
+def order_audio_input_files(audio_input_dir: Path, shuffle: bool) -> list[Path]:
     files = sorted(audio_input_dir.glob("*.mp3"))
     if not files:
         raise SystemExit(f"No MP3 files found in {audio_input_dir}")
@@ -93,7 +94,24 @@ def combine_mp3s(audio_input_dir: Path, output_path: Path, shuffle: bool) -> lis
         prefixed = [p for _, _, p in sorted(prefixed)]
         random.shuffle(others)
         files = prefixed + others
+    return files
 
+
+def select_audio_files_for_duration(files: list[Path], target_duration: float | None) -> list[Path]:
+    if target_duration is None:
+        return files
+
+    selected = []
+    total = 0.0
+    for p in files:
+        selected.append(p)
+        total += ffprobe_duration(p)
+        if total >= target_duration:
+            break
+    return selected
+
+
+def combine_mp3_files(files: list[Path], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -118,6 +136,17 @@ def combine_mp3s(audio_input_dir: Path, output_path: Path, shuffle: bool) -> lis
             str(output_path),
         ]
         run(cmd)
+
+
+def combine_mp3s(
+    audio_input_dir: Path,
+    output_path: Path,
+    shuffle: bool,
+    target_duration: float | None = None,
+) -> list[Path]:
+    files = order_audio_input_files(audio_input_dir, shuffle)
+    files = select_audio_files_for_duration(files, target_duration)
+    combine_mp3_files(files, output_path)
     return files
 
 
@@ -134,15 +163,60 @@ def write_tracklist(files: list[Path], output_path: Path) -> None:
             current += ffprobe_duration(p)
 
 
-def create_combined_audio(audio_input_dir: Path, audio_dir: Path, shuffle: bool) -> Path:
+def create_combined_audio(
+    audio_input_dir: Path,
+    audio_dir: Path,
+    shuffle: bool,
+    *,
+    output_path: Path | None = None,
+    tracklist_path: Path | None = None,
+    target_duration: float | None = None,
+) -> Path:
     if not list(audio_input_dir.glob("*.mp3")):
         raise SystemExit(f"No MP3 files found in {audio_input_dir}")
-    ts = datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
-    combined = audio_dir / f"{ts}.mp3"
-    combined_files = combine_mp3s(audio_input_dir, combined, shuffle)
-    tracklist_path = combined.with_suffix(".txt")
+    if output_path is None:
+        ts = datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
+        output_path = audio_dir / f"{ts}.mp3"
+    if tracklist_path is None:
+        tracklist_path = output_path.with_suffix(".txt")
+    combined_files = combine_mp3s(audio_input_dir, output_path, shuffle, target_duration)
     write_tracklist(combined_files, tracklist_path)
-    return combined
+    return output_path
+
+
+def has_glob_chars(path: Path) -> bool:
+    return any(char in str(path) for char in "*?[")
+
+
+def resolve_video_inputs(video_inputs: list[Path]) -> list[Path]:
+    videos = []
+    seen = set()
+    for video_input in video_inputs:
+        matches = []
+        if has_glob_chars(video_input):
+            matches = [Path(p) for p in sorted(glob.glob(str(video_input)))]
+        elif video_input.is_dir():
+            matches = [p for p in sorted(video_input.iterdir()) if p.suffix.lower() in VIDEO_EXTS]
+        else:
+            matches = [video_input]
+
+        if not matches:
+            raise SystemExit(f"No video files matched: {video_input}")
+
+        for video_path in matches:
+            resolved = video_path.resolve()
+            if resolved in seen:
+                continue
+            if not video_path.exists():
+                raise SystemExit(f"Video file not found: {video_path}")
+            if video_path.suffix.lower() not in VIDEO_EXTS:
+                raise SystemExit(f"Unsupported video extension: {video_path.suffix}")
+            videos.append(video_path)
+            seen.add(resolved)
+
+    if not videos:
+        raise SystemExit("No video files found")
+    return videos
 
 
 def build_output_path(video_path: Path, suffix: str, in_place: bool) -> Path:
@@ -206,8 +280,12 @@ def main():
     )
     parser.add_argument(
         "--video-input",
+        nargs="+",
         type=Path,
-        help="Optional single video file to process (overrides --video-dir).",
+        help=(
+            "Optional video file(s), directory, or glob pattern to process "
+            "(overrides --video-dir)."
+        ),
     )
     parser.add_argument(
         "--audio-codec",
@@ -300,29 +378,8 @@ def main():
         print(f"Total: {format_duration(total)} ({total:.2f}s)")
         return
 
-    if args.audio_file:
-        audio_path = args.audio_file
-    else:
-        audio_path = pick_mp3(args.audio_dir, args.audio_pick, args.audio_name)
-        if args.force_shuffle_audio_input:
-            audio_path = create_combined_audio(args.audio_input_dir, args.audio_dir, True)
-        elif args.combine or audio_path is None:
-            audio_path = create_combined_audio(
-                args.audio_input_dir,
-                args.audio_dir,
-                args.shuffle_audio_input,
-            )
-
-    if not audio_path.exists():
-        raise SystemExit(f"Audio file not found: {audio_path}")
-
     if args.video_input:
-        video_path = args.video_input
-        if not video_path.exists():
-            raise SystemExit(f"Video file not found: {video_path}")
-        if video_path.suffix.lower() not in VIDEO_EXTS:
-            raise SystemExit(f"Unsupported video extension: {video_path.suffix}")
-        videos = [video_path]
+        videos = resolve_video_inputs(args.video_input)
     else:
         video_dir = args.video_dir
         if not video_dir.exists():
@@ -332,12 +389,38 @@ def main():
         if not videos:
             raise SystemExit(f"No video files found in {video_dir}")
 
-    audio_duration = ffprobe_duration(audio_path)
+    if args.audio_file:
+        audio_path = args.audio_file
+    elif args.force_shuffle_audio_input:
+        audio_path = None
+    else:
+        audio_path = pick_mp3(args.audio_dir, args.audio_pick, args.audio_name)
+        if args.combine or audio_path is None:
+            audio_path = create_combined_audio(
+                args.audio_input_dir,
+                args.audio_dir,
+                args.shuffle_audio_input,
+            )
+
+    if audio_path is not None and not audio_path.exists():
+        raise SystemExit(f"Audio file not found: {audio_path}")
 
     failures = []
     for video_path in videos:
         try:
             video_duration = ffprobe_duration(video_path)
+            current_audio_path = audio_path
+            if args.force_shuffle_audio_input:
+                current_audio_path = create_combined_audio(
+                    args.audio_input_dir,
+                    args.audio_dir,
+                    True,
+                    output_path=args.audio_dir / f"{video_path.stem}.mp3",
+                    tracklist_path=args.audio_dir / f"{video_path.stem}.txt",
+                    target_duration=video_duration,
+                )
+
+            audio_duration = ffprobe_duration(current_audio_path)
             audio_longer = audio_duration > (video_duration + 0.01)
             audio_shorter = audio_duration + 0.01 < video_duration
             if audio_shorter:
@@ -364,7 +447,7 @@ def main():
                 cmd.extend(["-stream_loop", "-1"])
             cmd.extend([
                 "-i",
-                str(audio_path),
+                str(current_audio_path),
                 "-map",
                 "0:v:0",
                 "-map",
